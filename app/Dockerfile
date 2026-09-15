@@ -4,8 +4,8 @@ ARG BUILD_SHA=dev
 
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
-COPY nginx.conf /etc/nginx/nginx.conf
-COPY index.html /usr/share/nginx/html/index.html
+COPY app/nginx.conf /etc/nginx/nginx.conf
+COPY app/index.html /usr/share/nginx/html/index.html
 
 RUN sed -i "s/BUILD_SHA_PLACEHOLDER/${BUILD_SHA}/g" /usr/share/nginx/html/index.html \
     && chown -R appuser:appgroup /usr/share/nginx/html /var/cache/nginx /var/log/nginx \
