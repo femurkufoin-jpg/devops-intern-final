@@ -9,13 +9,120 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
-  validate:
+  lint:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Validate Dockerfile
-        run: docker build -t devops-intern-nginx -f app/Dockerfile .
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck
+        run: shellcheck scripts/*.sh
+
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: app/Dockerfile
+
+  build:
+    needs: lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --build-arg BUILD_SHA=${{ github.sha }} \
+            -t devops-intern-nginx:${{ github.sha }} \
+            -f app/Dockerfile .
+
+      - name: Save Docker image
+        run: docker save devops-intern-nginx:${{ github.sha }} -o nginx-image.tar
+
+      - name: Upload Docker image
+        uses: actions/upload-artifact@v4
+        with:
+          name: nginx-image
+          path: nginx-image.tar
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: nginx-image
+
+      - name: Load Docker image
+        run: docker load -i nginx-image.tar
+
+      - name: Start container
+        run: docker run -d --name nginx-test -p 8080:8080 devops-intern-nginx:${{ github.sha }}
+
+      - name: Wait for application
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8080/healthz; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Application did not become ready"
+          docker logs nginx-test
+          exit 1
+
+      - name: Run health check
+        run: bash scripts/healthcheck.sh http://localhost:8080/healthz
+
+      - name: Show container status
+        run: docker ps
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f nginx-test || true
+
+  publish:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish image
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/devops-intern-nginx"
+          docker build \
+            --build-arg BUILD_SHA=${{ github.sha }} \
+            -t "$IMAGE:${{ github.sha }}" \
+            -t "$IMAGE:latest" \
+            -f app/Dockerfile .
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
