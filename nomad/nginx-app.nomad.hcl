@@ -1,3 +1,7 @@
+variable "image" {
+  type = string
+}
+
 job "devops-intern-app" {
   datacenters = ["dc1"]
   type = "service"
@@ -25,7 +29,7 @@ job "devops-intern-app" {
       driver = "docker"
 
       config {
-        image = "devops-intern-nginx:v1"
+        image = var.image
         ports = ["http"]
       }
 
@@ -41,7 +45,7 @@ job "devops-intern-app" {
 
         check {
           type     = "http"
-          path     = "/"
+          path     = "/healthz"
           interval = "10s"
           timeout  = "2s"
         }
