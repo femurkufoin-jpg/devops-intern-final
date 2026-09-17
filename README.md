@@ -42,7 +42,7 @@ docker build -t devops-intern-nginx:final -f app/Dockerfile .
 Run the application on port 8080:
 
 ```bash
-docker run -d --name devops-nginx -p 8080:80 devops-intern-nginx:final
+docker run -d --name devops-nginx -p 8080:8080 devops-intern-nginx:final
 ```
 
 The application is served by NGINX at:
